@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>國字注音練習卷生成器</title>
+  <title>加能國語語詞練習卷</title>
   
   <!-- 載入 Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -30,7 +30,7 @@
   <div id="root"></div>
 
   <script type="text/babel" data-presets="react">
-    const { useState, useCallback, memo } = React;
+    const { useState, useCallback, memo, useEffect } = React;
 
     // ==========================================
     // 圖示元件 (替換原本的 lucide-react)
@@ -75,8 +75,7 @@
       });
     };
 
-    // 您專屬的 API Key
-    const apiKey = "AIzaSyA0vW-LsiqGnQ5RWYXxKV5nNMQskOSlUoI"; 
+    // 移除內建的系統 API Key，完全由使用者自行輸入
 
     async function fetchWithBackoff(url, options, maxRetries = 3) {
       const delays = [1000, 2000, 4000];
@@ -107,7 +106,7 @@
       }
     }
 
-    const parseArticleWithGemini = async (text, targetChars, useRandomCommonWord) => {
+    const parseArticleWithGemini = async (text, targetChars, useRandomCommonWord, apiKeyToUse) => {
       const ruleSpecifics = useRandomCommonWord
         ? `1. 對於使用者提供的「每個」生字，隨機生成一個適合國小程度且包含該生字的常用語詞。
            2. 每個生字只輸出一組語詞。
@@ -189,7 +188,7 @@
       let lastError = null;
 
       for (const model of modelsToTry) {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKeyToUse}`;
         try {
           const result = await fetchWithBackoff(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
           const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -210,7 +209,7 @@
             console.warn(`模型 ${model} 失敗，嘗試下一個...`);
             continue;
           }
-          throw new Error("AI 回傳格式解析錯誤，請重新產生一次。");
+          throw new Error("AI 回傳錯誤，請檢查您的金鑰或稍後再試。");
         }
       }
 
@@ -402,14 +401,24 @@
       const [showPrintModal, setShowPrintModal] = useState(false);
       const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
+      // 自訂 API Key 狀態 (具有自動記憶功能)
+      const [userApiKey, setUserApiKey] = useState(() => localStorage.getItem('user_api_key') || '');
+
+      const handleApiKeyChange = (e) => {
+        const key = e.target.value;
+        setUserApiKey(key);
+        localStorage.setItem('user_api_key', key);
+      };
+
       const handleGenerate = async () => {
+        if (!userApiKey.trim()) return setErrorMsg("請先設定您的 Google Gemini API Key！");
         if (!inputText.trim() && !useRandomCommonWord) return setErrorMsg("請輸入課文內容！");
         if (!targetChars.trim()) return setErrorMsg("請輸入要練習的生字！");
         
         setIsLoading(true);
         setErrorMsg("");
         try {
-          const data = await parseArticleWithGemini(inputText, targetChars, useRandomCommonWord);
+          const data = await parseArticleWithGemini(inputText, targetChars, useRandomCommonWord, userApiKey.trim());
           const formattedLesson = lessonNumber.trim() ? `加能 國語第${lessonNumber.trim()}課` : '';
           const customTitleParts = [formattedLesson, lessonTitle.trim(), author.trim()].filter(Boolean);
           data.title = customTitleParts.length > 0 ? `${customTitleParts.join(' ')} 語詞練習` : '語詞練習';
@@ -519,7 +528,7 @@
             <div className="w-full max-w-[min(100%,80rem)] mx-auto px-[clamp(1rem,4vw,2rem)] min-h-[clamp(3.5rem,8vw,4rem)] flex flex-wrap items-center justify-between gap-y-2 py-2">
               <div className="flex items-center gap-[clamp(0.5rem,2vw,1rem)]">
                 <BookOpen className="h-[clamp(1.25rem,4vw,1.5rem)] w-[clamp(1.25rem,4vw,1.5rem)]" />
-                <span className="font-bold text-[clamp(1.125rem,3vw,1.25rem)] tracking-tight">國字注音生成器</span>
+                <span className="font-bold text-[clamp(1.125rem,3vw,1.25rem)] tracking-tight">加能國語語詞練習卷</span>
               </div>
               <div className="flex flex-wrap items-center gap-[clamp(0.5rem,2vw,1rem)]">
                 <button onClick={handlePrint} disabled={!articleData} className="bg-white text-emerald-700 px-[clamp(0.75rem,2vw,1.25rem)] py-[clamp(0.5rem,1.5vw,0.75rem)] rounded-lg font-bold disabled:opacity-50 flex items-center gap-2 shadow-sm transition-all hover:bg-emerald-50 text-[clamp(0.875rem,2vw,1rem)]">
@@ -562,8 +571,8 @@
                 <textarea className="w-full h-[clamp(10rem,25vh,14rem)] p-[clamp(0.75rem,2vw,1rem)] text-[clamp(1rem,2vw,1.125rem)] border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none resize-none mb-[clamp(1rem,3vw,1.5rem)] shadow-sm" placeholder="請在此貼上課文內容（若勾選隨機語詞則可不填）..." value={inputText} onChange={(e) => setInputText(e.target.value)} />
                 
                 <div className="mb-[clamp(1.25rem,4vw,1.5rem)] bg-slate-50 p-[clamp(1rem,3vw,1.5rem)] rounded-xl border border-slate-100">
-                  <label className="block text-[clamp(0.875rem,2vw,1rem)] font-bold text-slate-700 mb-[clamp(0.5rem,2vw,0.75rem)]">請輸入生字 (以逗號或空格分隔)</label>
-                  <input type="text" className="w-full p-[clamp(0.75rem,2vw,1rem)] text-[clamp(1rem,2vw,1.125rem)] border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none bg-white shadow-sm" placeholder="例如：春, 園, 蜜" value={targetChars} onChange={(e) => setTargetChars(e.target.value)} />
+                  <label className="block text-[clamp(0.875rem,2vw,1rem)] font-bold text-slate-700 mb-[clamp(0.5rem,2vw,0.75rem)]">請輸入生字 (可連續輸入，或以空格/逗號分隔)</label>
+                  <input type="text" className="w-full p-[clamp(0.75rem,2vw,1rem)] text-[clamp(1rem,2vw,1.125rem)] border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none bg-white shadow-sm" placeholder="例如：春園蜜 (或 春, 園, 蜜)" value={targetChars} onChange={(e) => setTargetChars(e.target.value)} />
                   <div className="mt-[clamp(0.75rem,2vw,1rem)] flex flex-wrap items-center gap-[clamp(1rem,3vw,1.5rem)]">
                     <label className="flex items-center gap-2 cursor-pointer text-[clamp(0.875rem,2vw,1rem)] text-slate-600 hover:text-emerald-700 transition-colors font-medium">
                       <input type="checkbox" checked={useRandomCommonWord} onChange={e => setUseRandomCommonWord(e.target.checked)} className="w-[clamp(1rem,2vw,1.25rem)] h-[clamp(1rem,2vw,1.25rem)] text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 shrink-0" />
@@ -574,6 +583,21 @@
                       自動挖空生字
                     </label>
                   </div>
+                </div>
+
+                {/* API Key 必填設定區塊 */}
+                <div className="mb-[clamp(1.25rem,4vw,1.5rem)] p-[clamp(1rem,3vw,1.5rem)] bg-emerald-50 border border-emerald-200 rounded-xl">
+                  <label className="block text-[clamp(0.875rem,2vw,1rem)] font-bold text-emerald-800 mb-[clamp(0.5rem,2vw,0.75rem)]">設定 Google Gemini API Key (必填)</label>
+                  <input 
+                    type="password" 
+                    value={userApiKey} 
+                    onChange={handleApiKeyChange} 
+                    placeholder="請輸入您的 API Key (AIzaSy...)" 
+                    className="w-full p-[clamp(0.5rem,1.5vw,0.75rem)] text-[clamp(0.875rem,2vw,1rem)] border border-emerald-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none shadow-sm font-mono bg-white"
+                  />
+                  <p className="text-[clamp(0.75rem,1.5vw,0.875rem)] text-emerald-600 mt-2">
+                    金鑰將安全地自動記憶於您的瀏覽器中。<a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="underline font-bold hover:text-emerald-800">點此免費申請 API Key</a>
+                  </p>
                 </div>
 
                 <button onClick={handleGenerate} disabled={isLoading} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-[clamp(0.875rem,3vw,1.25rem)] rounded-xl font-bold text-[clamp(1rem,3vw,1.125rem)] shadow-lg flex items-center justify-center gap-2 transition-all transform hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
